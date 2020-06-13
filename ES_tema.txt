@@ -1,0 +1,607 @@
+
+# ~~~HW 1~~~ #
+# read https://www.elastic.co/guide/en/elasticsearch/reference/6.8/elasticsearch-intro.html
+#  with a big emphasis on https://www.elastic.co/guide/en/elasticsearch/reference/6.8/scalability.html
+#  and answer the following
+#         What is sharding and why is it used in ES
+
+
+
+##################################################################################
+#                  As an ES deployment you can use                               #
+#                   https://zhantz.com/kibana                                    #
+#                     username: kibanaadmin                                      #
+#                     password: G2ezJy*WF7                                       #
+#                                                                                #
+##################################################################################
+
+
+
+
+
+# ~~~HW 2~~~ #
+##################################################################################
+# ES Docs https://www.elastic.co/guide/en/elasticsearch/reference/6.8/search.html#
+#                                                                                #
+#                                                                                #
+#     please look up all the base examples to understand what they are doing     #
+#       the link to each individual query is intentionally not provided          #
+#                                                                                #
+#       be very careful when googleing documentation regarding ES (or any API)   #
+#       because the version (especially the major one) is very important         #
+##################################################################################
+
+
+
+#####################################################################
+#                                                                   #
+#                           Base examples                           #
+#                                                                   #
+#                                                                   #
+#####################################################################
+# let's see the mapping
+GET kibana_sample_data_ecommerce/_doc/_mapping
+
+# get all elements
+GET kibana_sample_data_ecommerce/_search
+{
+  "query": {
+    "match_all": {}
+  }
+}
+
+# limit returned results
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "match_all": {}
+  }
+}
+
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 1, 
+  "query": {
+    "match_all": {}
+  }
+}
+
+# search for an item by text
+GET kibana_sample_data_ecommerce/_search
+{
+  "query": {
+    "match": {
+      "customer_full_name": "Bailey"
+    }
+  }
+}
+
+## this works in embeded fields too
+## notice how products is a list
+## you refer to properties under properties by using the "." separator
+GET kibana_sample_data_ecommerce/_search
+{
+  "query": {
+    "match": {
+      "products.product_name": {
+        "query": "dress"
+      }
+    }
+  }
+}
+
+# filter returned fields
+## note that both size and _source are applied
+##  only for the return results and do not affect
+##  the actual query
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "_source": [
+    "customer_full_name",
+    "geoip.continent_name"
+  ],
+  "query": {
+    "match_all": {}
+  }
+}
+
+# filter results by field (term query)
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "term": {
+      "currency": "EUR"
+    }
+  }
+}
+
+
+# filter results by term multiple values
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "terms": {
+      "currency": [
+        "EUR",
+        "USD"
+      ]
+    }
+  }
+}
+
+# negative filter
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "bool": {
+      "must_not": [
+        {
+          "term": {
+            "currency": "EUR"
+          }
+        }
+      ]
+    }
+  }
+}
+
+# filter results by range query
+GET kibana_sample_data_ecommerce/_search?size=10
+{
+  "query": {
+    "range": {
+      "taxful_total_price": {
+        "gte": 200,
+        "lte": 300
+      }
+    }
+  }
+}
+
+# sort results
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "sort": [
+    {
+      "taxful_total_price": {
+        "order": "desc"
+      }
+    }
+  ]
+}
+
+# should (OR) query
+## a logical OR is made between the filters
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "term": {
+            "customer_gender": "MALE"
+          }
+        },
+        {
+          "term": {
+            "day_of_week": "Saturday"
+          }
+        }
+      ]
+    }
+  }
+}
+
+# must (AND) query
+## a logical AND is made between the filters
+GET kibana_sample_data_ecommerce/_search?size=1
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "customer_gender": "MALE"
+          }
+        },
+        {
+          "term": {
+            "day_of_week": "Saturday"
+          }
+        }
+      ]
+    }
+  }
+}
+
+# collapse (GROUP BY)
+## collapse the results by field "geoip.continent_name"
+##  because the results are sorted it will present
+##  the document with the biggest taxful_total_price
+GET kibana_sample_data_ecommerce/_search
+{
+  "sort": [
+    {
+      "taxful_total_price": {
+        "order": "desc"
+      }
+    }
+  ], 
+  "collapse": {
+    "field": "geoip.continent_name"
+  }
+}
+
+## also get top 5 latest entries
+GET kibana_sample_data_ecommerce/_search
+{
+  "sort": [
+    {
+      "taxful_total_price": {
+        "order": "desc"
+      }
+    }
+  ], 
+  "collapse": {
+    "field": "geoip.continent_name",
+    "inner_hits": {
+            "name": "latest_orders", 
+            "size": 5, 
+            "sort": [{ "order_date": "desc" }] 
+        }
+  }
+}
+
+## only get only top 5 latest
+### the _source = "" tells ES we are not interested
+###  in the fields returned by the query
+GET kibana_sample_data_ecommerce/_search
+{ 
+  "_source": "", 
+  "collapse": {
+    "field": "geoip.continent_name",
+    "inner_hits": {
+            "name": "latest_orders", 
+            "size": 5, 
+            "sort": [{ "order_date": "desc" }] 
+        }
+  }
+}
+
+# perform aggregation (total sum)
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0, 
+    "aggs" : {
+        "total" : { "sum" : { "field" : "taxful_total_price" } }
+    }
+}
+
+# chain aggregation
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "continent": {
+      "terms": {
+        "field": "geoip.continent_name",
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+
+# ~~~HW 3~~~ #
+#####################################################################
+#                                                                   #
+#                           Given examples                          #
+#                                                                   #
+#                                                                   #
+#####################################################################
+
+# get the customers from Africa that generated the most revenue from "2020-06-08T09:28:48+00:00" onwards
+GET kibana_sample_data_ecommerce/_search
+{
+  "_source": [
+    "customer_full_name",
+    "geoip.continent_name"
+  ],
+  "size": 0, 
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "range": {
+            "order_date": {
+              "gte": "2020-06-08T09:28:48+00:00"
+            }
+          }
+        },
+        {
+          "term": {
+            "geoip.continent_name": {
+              "value": "Africa"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aggs": {
+    "our_customer_aggs": {
+      "terms": {
+        "field": "customer_id",
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# get the customers that generated the biggest revenue
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "customer_id",
+        "size": 9999,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["customer_full_name"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+
+# get the customers that generated the biggest revenue in a time period
+GET kibana_sample_data_ecommerce/_search
+{
+  "query": {
+    "range": {
+      "order_date": {
+        "gte": "2020-06-08T09:28:48+00:00"
+      }
+    }
+  }, 
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "customer_id",
+        "size": 9999,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["customer_full_name"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+#####################################################################
+#                                                                   #
+#       Get the following statistics                                #
+#                                                                   #
+#          WARNING: For some you need to check the documentation    #
+#                        to get the required API/tools              #
+#                                                                   #
+#####################################################################
+
+
+
+# get the week with the biggest sales
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "order_date",
+        "format": "w",
+        "size": 1,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["order_date"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# get the day with the biggest sales
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "day_of_week_i",
+        "size": 1,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["day_of_week"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# get the continent with the biggest sales
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "geoip.continent_name",
+        "size": 1,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["geoip.continent_name"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# get the best selling day of the week
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "day_of_week_i",
+        "size": 1,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1
+            , "_source": ["day_of_week"]
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# find all categories
+GET kibana_sample_data_ecommerce/_search
+{
+  "_source": ["products.category"],
+  "query": {
+        "match_all": {}
+  }
+}
+
+# get the most valuable (generated biggest revenue) product (Bonus: per category)
+GET kibana_sample_data_ecommerce/_search
+{
+  "size": 0,
+  "aggs": {
+    "users": {
+      "terms": {
+        "field": "products.product_id",
+        "size": 1,
+        "order": {
+          "total": "desc"
+        }
+      },
+      "aggs": {
+        "results": {
+          "top_hits": {
+            "size": 1,
+            "_source": ["products.product_name"]
+            
+          }
+        },
+        "total": {
+          "sum": {
+            "field": "taxful_total_price"
+          }
+        }
+      }
+    }
+  }
+}
+
+# (Bonus) get best selling category per continent
+
+# (Bonus) get the hour of day with biggest sales
+
+# (Bonus) see if prices for products fluctuate
+
+# (Bonus) get the most valuable (generated biggest revenue) manufaturer per category
+
+# (Bonus) get the fastest growing item by quantity (qt/t_now - t_created)
